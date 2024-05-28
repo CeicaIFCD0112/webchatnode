@@ -19,6 +19,7 @@ app.use(express.urlencoded({ extended: true }));
 // Configura el motor de plantillas EJS
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+let usuarios=[];
 
 app.use(express.static('public'));
 
@@ -33,7 +34,7 @@ const session_middleware=session({
     })});
 app.use(session_middleware);
 
-// Conectar a MongoDB
+// Conectar a MongoDB{_id,name}
 mongoose.connect('mongodb://localhost:27017/tresenraya')
     .then(() => {
         console.log('Conectado a MongoDB');
@@ -49,17 +50,32 @@ io.use((socket,next)=>{
 
 io.on('connection', (socket) => {
         console.log("Nuevo cliente conectado" + socket.id);
-        io.emit("mensaje","Nuevo cliente conectado "+socket.request.session.user.name);
+        const {_id,name}=socket.request.session.user;
+        
+        usuarios.push({_id,name,socketId:socket.id})
+        //console.log(usuarios);
+        io.emit("usuarios",usuarios);
 
 
-        socket.on('disconnect',()=>{
-            console.log("Se ha desconectado un cliente")
-        })
+
+        socket.on('disconnect', () => {
+            console.log("Se ha desconectado un cliente");
+
+            usuarios = usuarios.filter(user => user._id !== _id);
+            //console.log(usuarios);
+            io.emit("usuarios", usuarios);
+        });
 
         socket.on('mensaje', (mensaje) => {
             console.log(mensaje);
             socket.broadcast.emit('mensaje', mensaje);
         })
+
+        socket.on('invitaciones',(datos)=>{
+            io.to(datos).emit("pendientes","Invitación de "+socket.id)
+        })
+
+        
 })
 
 
@@ -107,7 +123,8 @@ app.post("/register", async (req, res) => {
 })
 
 app.get("/juego", isAuthenticated,(req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'juego.html'));
+    let {_id,name}=req.session.user;
+    res.render("juego",{user:{_id,name}});
 })
 
 server.listen(PORT, () => {
